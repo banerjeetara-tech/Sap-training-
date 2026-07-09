@@ -974,5 +974,78 @@ document.addEventListener('change', e=>{
 refreshRing();
 render();
 </script>
+<!-- ===== Auto-backup to GitHub + status badge ===== -->
+<script>
+(function () {
+  var WORKER_URL = "https://payroll-backup.banerjee-tara.workers.dev";
+  var TOKEN      = "tarabackup2026";
+  var STATE_KEY  = "payrollLearn_v1";
+
+  function hash(s){var h=5381;for(var i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0;}return h.toString(36);}
+
+  function relTime(iso){
+    if(!iso) return {txt:"never", state:"off"};
+    var d=Math.floor((Date.now()-new Date(iso).getTime())/86400000);
+    if(d<=0) return {txt:"today", state:"ok"};
+    if(d===1) return {txt:"yesterday", state:"warn"};
+    return {txt:d+"d ago", state:(d<=3?"warn":"off")};
+  }
+
+  function paint(msg){
+    var b=document.getElementById("bkpBadge"); if(!b) return;
+    if(msg){ b.textContent=msg; b.style.color="#C0392B"; return; }
+    var r=relTime(localStorage.getItem("lastBackupAt"));
+    b.style.color = r.state==="ok" ? "#1F8A4C" : r.state==="warn" ? "#B07500" : "#C0392B";
+    b.textContent = "\u2601 backup: " + r.txt;
+  }
+
+  async function backup(){
+    try{
+      var raw=localStorage.getItem(STATE_KEY);
+      if(!raw){ paint("\u2601 no data yet"); return; }
+      var sig=hash(raw);
+      if(localStorage.getItem("lastBackupHash")===sig){ paint(); return; }
+      var res=await fetch(WORKER_URL,{
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-token":TOKEN},
+        body:JSON.stringify({data:raw})
+      });
+      if(res.ok){
+        localStorage.setItem("lastBackupHash",sig);
+        localStorage.setItem("lastBackupAt",new Date().toISOString());
+      }
+    }catch(e){}
+    paint();
+  }
+
+  function makeBadge(){
+    if(document.getElementById("bkpBadge")) return;
+    var b=document.createElement("div");
+    b.id="bkpBadge";
+    b.style.cssText="position:fixed;left:10px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:99999;"+
+      "font:600 11px/1 'Hanken Grotesk',system-ui,sans-serif;background:rgba(251,246,240,.94);"+
+      "border:1px solid rgba(35,26,21,.12);border-radius:999px;padding:6px 10px;"+
+      "box-shadow:0 1px 4px rgba(35,26,21,.14);color:#6B5E56;-webkit-backdrop-filter:blur(4px);"+
+      "backdrop-filter:blur(4px);cursor:pointer;user-select:none;-webkit-user-select:none;";
+    b.title="Tap to back up now";
+    b.textContent="\u2601 backup: \u2026";
+    b.addEventListener("click",function(){
+      b.textContent="\u2601 backing up\u2026";
+      localStorage.removeItem("lastBackupHash");
+      backup();
+    });
+    document.body.appendChild(b);
+    paint();
+  }
+
+  function start(){ makeBadge(); setTimeout(backup,1500); }
+  if(document.readyState==="complete"||document.readyState==="interactive") start();
+  else window.addEventListener("load",start);
+
+  window.forceBackup=function(){ localStorage.removeItem("lastBackupHash"); backup(); };
+})();
+</script>
+<!-- ===== end auto-backup ===== -->
+
 </body>
 </html>
