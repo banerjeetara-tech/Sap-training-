@@ -495,10 +495,12 @@ function todoToTab(id, kind){
 /* ---------- Add form + Excel panel ---------- */
 function excelPanel(preset){
   const opt=(v,l)=>'<option value="'+v+'"'+(v===preset?' selected':'')+'>'+l+'</option>';
-  return '<div class="hint">Choose target, then your .xlsx. Columns:<br>'+
-   '<b>Payroll / Other:</b> Name | Date(1-31) | Description | SAP<br>'+
-   '<b>SAP:</b> Name | Steps &nbsp; &nbsp; <b>T-codes:</b> T-Code | Category | Description<br>'+
-   'A header row is skipped automatically. After you pick the file you choose how to save: Replace / Update matching / Add. Loads a reader from the internet the first time.</div>'+
+  return '<div class="hint">Choose the target, then your .xlsx. Columns read per sheet:<br>'+
+   '<b>Payroll:</b> Activity | Process | Date | Sent | Contact<br>'+
+   '<b>Other:</b> Area | Details | Timing<br>'+
+   '<b>SAP:</b> Activity | Steps | \u2026 | Basic details<br>'+
+   '<b>T-codes:</b> Category | T-Code | Description<br>'+
+   'Put the day as the last line inside the name cell (e.g. \u201cNPS \u21b5 4\u201d) and the calendar arranges by it. A header row is skipped automatically. After picking the file you choose Replace / Update matching / Add. Loads a reader from the internet the first time.</div>'+
    '<div class="card addform">'+
    '<select id="xlTarget" style="width:100%;margin-top:8px;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);font:inherit;font-size:14px;background:#fff">'+
     opt('pay','Payroll works')+opt('other','Other than payroll')+opt('sap','SAP entries')+opt('tc','T-codes')+'</select>'+
@@ -1044,29 +1046,50 @@ document.getElementById('fileImport').addEventListener('change', e=>{
 /* ---------- shared import helpers (Excel + screenshot) ---------- */
 function targetLabel(t){ return t==='pay'?'Payroll':t==='other'?'Other':t==='sap'?'SAP':t==='tc'?'T-codes':t; }
 
+/* from a name cell: first line = name, trailing number line = day, middle lines = rest */
+function cleanDay(cell){
+  const raw=String(cell==null?'':cell);
+  let parts=raw.split('\n').map(s=>s.trim()).filter(s=>s!=='');
+  let day=null;
+  if(parts.length>1){
+    const last=parts[parts.length-1];
+    const m=last.match(/^(\d{1,2})/);
+    if(m && +m[1]>=1 && +m[1]<=31){ day=+m[1]; parts=parts.slice(0,-1); }
+  }
+  return {name:(parts[0]||''), day:day, rest:parts.slice(1).join('\n')};
+}
+function joinNE(){ return [].slice.call(arguments).map(s=>(s==null?'':String(s)).trim()).filter(Boolean).join('\n'); }
 function parseRows(target, rows){
   let start=0;
   if(rows.length){
     const c0=((rows[0][0]||'')+'').trim().toLowerCase();
-    const labels=['name','activity','category','t-code','tcode','code','work','sl','sl no','sr no','s.no'];
+    const labels=['name','activity','category','t-code','tcode','code','work','area','details'];
     const h=(rows[0].join(' ')).toLowerCase();
-    let hits=0; ['category','activity','name','process','description','date','code'].forEach(w=>{ if(new RegExp('\\b'+w+'\\b').test(h)) hits++; });
+    let hits=0; ['category','activity','area','details','process','name','description','date','sent','contact','flexible','symbol'].forEach(w=>{ if(new RegExp('\\b'+w.replace('-','\\-?')+'\\b').test(h)) hits++; });
     if(labels.includes(c0) || hits>=2) start=1;
   }
   const out=[];
   for(let i=start;i<rows.length;i++){
-    const c=rows[i]; if(!c || !c.length) continue;
+    const c=rows[i]||[];
+    const cell=k=>(c[k]==null?'':String(c[k]));
     if(target==='tc'){
-      const code=(c[1]||c[0]||'').toString().trim(); if(!code) continue;
-      out.push({code:code, cat:(c[0]||'Imported').toString().trim(), desc:(c[2]||'').toString().trim()});
-    } else if(target==='sap'){
-      const name=(c[0]||'').toString().trim(); if(!name) continue;
-      out.push({name:name, desc:'', sap:(c[1]||'').toString()});
-    } else {
-      const name=(c[0]||'').toString().trim(); if(!name) continue;
-      const d=parseInt(c[1],10);
-      out.push({name:name, days:(!isNaN(d)&&d>=1&&d<=31)?[d]:[], desc:(c[2]||'').toString(), sap:(c[3]||'').toString()});
+      const code=(cell(1)||cell(0)).trim(); if(!code) continue;
+      out.push({code:code, cat:cell(0).trim()||'Imported', desc:cell(2).trim()});
+      continue;
     }
+    if(target==='sap'){
+      const nd=cleanDay(cell(0)); if(!nd.name) continue;
+      out.push({name:nd.name, day:nd.day, process:'', sap:joinNE(cell(1),nd.rest), extra:joinNE(cell(4),cell(5))});
+      continue;
+    }
+    if(target==='other'){
+      const nd=cleanDay(cell(0)); if(!nd.name) continue;
+      out.push({name:nd.name, day:nd.day, process:joinNE(nd.rest,cell(1)), timing:cell(2)});
+      continue;
+    }
+    // pay: Activity | Process | date(when) | Sent | Contact
+    const nd=cleanDay(cell(0)); if(!nd.name) continue;
+    out.push({name:nd.name, day:nd.day, process:joinNE(nd.rest,cell(1)), when:cell(2), sent:cell(3), contact:cell(4)});
   }
   return out;
 }
@@ -1079,9 +1102,16 @@ function canonList(target){
   customList(target).forEach(x=>{ if(isDel(x.id)) return; out.push({id:x.id, name:(target==='tc'?(x.code||''):(x.activity||'')), seed:false, obj:x}); });
   return out;
 }
+function normName(s){ return (s==null?'':String(s)).trim().toLowerCase().replace(/\s+/g,' '); }
 function findMatch(target, name){
-  const key=(name||'').trim().toLowerCase(); if(!key) return null;
-  return canonList(target).find(c=>(c.name||'').trim().toLowerCase()===key) || null;
+  const key=normName(name); if(!key) return null;
+  const list=canonList(target);
+  let hit=list.find(c=>normName(c.name)===key); if(hit) return hit;   // exact
+  if(key.length>=10){                                                 // prefix either way
+    hit=list.find(c=>{ const n=normName(c.name); return n.length>=10 && (n.startsWith(key)||key.startsWith(n)); });
+    if(hit) return hit;
+  }
+  return null;
 }
 /* current steps of a matched item (your override if any, else built-in) */
 function existingSteps(m){
@@ -1114,27 +1144,31 @@ function applyParsed(target, parsed, mode){
       return;
     }
     const m = (mode==='merge') ? findMatch(target, r.name) : null;
+    const patch={};
+    if(r.day!=null) patch.days=[r.day];
+    if(r.when && r.when.trim()) patch.when=r.when.trim();
+    if(r.timing && r.timing.trim()) patch.timing=r.timing.trim();
+    if(r.sent && r.sent.trim()) patch.sent=r.sent.trim();
+    if(r.contact && r.contact.trim()) patch.contact=r.contact.trim();
+    if(r.extra && r.extra.trim()) patch.extra=r.extra.trim();
+    const hasBody = (r.process && r.process.trim()) || (r.sap && r.sap.trim());
     if(m){
-      const hasBody = (r.desc && r.desc.trim()) || (r.sap && r.sap.trim());
-      const hasDay  = target!=='sap' && r.days && r.days.length;
-      if(m.seed){
-        if(hasDay) mem.edits[m.id]=Object.assign(mem.edits[m.id]||{}, {days:r.days});
-      } else {
-        if(hasDay) m.obj.days=r.days;
-      }
+      if(m.seed){ if(Object.keys(patch).length) mem.edits[m.id]=Object.assign(mem.edits[m.id]||{}, patch); }
+      else { Object.assign(m.obj, patch); }
       if(hasBody){
         let steps = existingSteps(m);
         if(!steps.length) steps=[{desc:'',sap:''}];
-        steps[0].desc = addLines(steps[0].desc, r.desc);
+        steps[0].desc = addLines(steps[0].desc, r.process);
         steps[0].sap  = addLines(steps[0].sap,  r.sap);
         mem.steps[m.id] = steps;
       }
       updated++;
     } else {
       const it={id:'MY-'+Date.now()+'-'+idx, activity:r.name, custom:true};
-      if(target!=='sap') it.days=r.days||[];
+      if(target!=='sap') it.days = (r.day!=null)?[r.day]:[];
+      ['when','timing','sent','contact','extra'].forEach(k=>{ if(patch[k]) it[k]=patch[k]; });
       mem.custom[target].push(it);
-      mem.steps[it.id]=[{desc:r.desc||'', sap:r.sap||''}];
+      mem.steps[it.id]=[{desc:r.process||'', sap:r.sap||''}];
       added++;
     }
   });
@@ -1230,7 +1264,7 @@ function photoReview(target, text){
     const nm=(document.getElementById('phName').value||'').trim();
     const tx=document.getElementById('phText').value||'';
     if(!nm){ toast("Name needed"); return; }
-    const row = target==='sap' ? {name:nm, desc:'', sap:tx} : {name:nm, days:[], desc:tx, sap:''};
+    const row = target==='sap' ? {name:nm, day:null, process:'', sap:tx} : {name:nm, day:null, process:tx};
     ov.remove();
     applyParsed(target, [row], m);
   });
