@@ -598,10 +598,15 @@ function renderSection(id){
       '<div class="formrow"><button class="savebtn" data-secrename="'+id+'">Save name</button>'+
       '<button class="cancelbtn" data-seccancel="1">Cancel</button></div></div>';
   } else {
-    html+='<div class="formrow" style="margin-bottom:10px">'+
+    html+='<div class="formrow" style="margin-bottom:8px">'+
       '<button class="addbtn" style="margin:0" data-secadd="'+id+'">&#65291; Add entry</button>'+
+      '<button class="addbtn" style="margin:0" data-secxl="'+id+'">&#128196; Excel</button>'+
+      '<button class="addbtn" style="margin:0" data-secphoto="'+id+'">&#128247; Photo</button></div>'+
+      '<div class="formrow" style="margin-bottom:10px">'+
       '<button class="ministep" data-secren="'+id+'">&#9998; Rename</button>'+
-      '<button class="ministep" style="color:var(--red)" data-secdel="'+id+'">&#128465; Delete section</button></div>';
+      '<button class="ministep" style="color:var(--red)" data-secdel="'+id+'">&#128465; Delete section</button></div>'+
+      '<input type="file" id="secXlFile" accept=".xlsx,.xls,.csv" style="display:none" data-sid="'+id+'">'+
+      '<input type="file" id="secImgFile" accept="image/*" style="display:none" data-sid="'+id+'">';
   }
   if(secEdit==='new:'+id) html+=itemForm(id,'new','','');
   let shown=0;
@@ -1312,6 +1317,10 @@ app.addEventListener('click', e=>{
   if(srn){ renameSection(srn.dataset.secrename); return; }
   const sdel=e.target.closest('[data-secdel]');
   if(sdel){ deleteSection(sdel.dataset.secdel); return; }
+  const sxl=e.target.closest('[data-secxl]');
+  if(sxl){ secImportSid=sxl.dataset.secxl; ensureXLSX(function(){ document.getElementById('secXlFile').click(); }); return; }
+  const sph=e.target.closest('[data-secphoto]');
+  if(sph){ secImportSid=sph.dataset.secphoto; ensureTesseract(function(){ document.getElementById('secImgFile').click(); }); return; }
   const sad=e.target.closest('[data-secadd]');
   if(sad){ secEdit='new:'+sad.dataset.secadd; render({focusEditor:1}); return; }
   const sca=e.target.closest('[data-seccancel]');
@@ -1768,6 +1777,33 @@ function ensureXLSX(cb){
   s.onerror=()=>toast("No internet - can't load reader");
   document.head.appendChild(s);
 }
+var secImportSid=null;
+document.addEventListener('change', function(e){
+  if(e.target.id!=='secXlFile') return;
+  var f=e.target.files[0]; if(!f) return; var sid=e.target.dataset.sid;
+  var r=new FileReader();
+  r.onload=function(){
+    try{
+      var wb=XLSX.read(new Uint8Array(r.result),{type:'array'});
+      var ws=wb.Sheets[wb.SheetNames[0]];
+      var rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false});
+      e.target.value='';
+      if(!rows.length){ toast('Empty sheet'); return; }
+      pendingXL={target:'sec:'+sid, rows:rows};
+      mapUISection();
+    }catch(err){ toast("Couldn't read that file"); }
+  };
+  r.readAsArrayBuffer(f);
+});
+document.addEventListener('change', function(e){
+  if(e.target.id!=='secImgFile') return;
+  var f=e.target.files[0]; if(!f) return; var sid=e.target.dataset.sid;
+  e.target.value='';
+  toast('Reading text\u2026');
+  Tesseract.recognize(f,'eng').then(function(res){
+    photoMap('sec:'+sid, (res.data&&res.data.text)||'');
+  }).catch(function(){ toast("Couldn't read that image"); });
+});
 document.addEventListener('change', e=>{
   if(e.target.id!=='xlFile') return;
   const f=e.target.files[0]; if(!f) return;
