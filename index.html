@@ -2905,6 +2905,36 @@ webBlock=function(){
   return h+'</div>';
 };
 
+/* ===== v2026-09-19-B · web page: shortcut buttons always visible ===== */
+APP_VERSION = 'v2026-09-19-B · web shortcuts always on';
+var _renderWebB = renderWeb;
+renderWeb = function(){
+  _renderWebB();
+  if(web.q) return;                       // results view already has the buttons
+  var hint=app.querySelector('.hint');
+  var names=['Google','Google News','YouTube','SAP Help','Claude','ChatGPT','Gemini'];
+  var h='<div class="srgroup"><h3>Quick search</h3><div class="weblinks">'+
+    names.map(function(n){return '<a href="#" data-wq="'+n+'">'+n+' &#8599;</a>';}).join('')+'</div></div>';
+  (hint||app.lastChild).insertAdjacentHTML('afterend', h);
+};
+function webLinkFor(n, q){
+  var e=encodeURIComponent, ai=q+' (India payroll / SAP HCM context)';
+  var map={'Google':q?'https://www.google.com/search?q='+e(q):'https://www.google.com',
+    'Google News':q?'https://news.google.com/search?q='+e(expandQ(q)+' when:7d')+'&hl=en-IN&gl=IN&ceid=IN:en':'https://news.google.com/?hl=en-IN&gl=IN&ceid=IN:en',
+    'YouTube':q?'https://www.youtube.com/results?search_query='+e(q+' SAP payroll'):'https://www.youtube.com',
+    'SAP Help':q?'https://help.sap.com/docs/search?q='+e(q):'https://help.sap.com',
+    'Claude':q?'https://claude.ai/new?q='+e(ai):'https://claude.ai/new',
+    'ChatGPT':q?'https://chatgpt.com/?q='+e(ai):'https://chatgpt.com',
+    'Gemini':q?'https://gemini.google.com/app?q='+e(ai):'https://gemini.google.com/app'};
+  return map[n];
+}
+app.addEventListener('click', function(e){
+  var a=e.target.closest('[data-wq]'); if(!a) return;
+  e.preventDefault(); e.stopPropagation();
+  var i=document.getElementById('wsq'); var q=(i&&i.value||'').trim();
+  window.open(webLinkFor(a.dataset.wq, q), '_blank', 'noopener');
+}, true);
+
 refreshRing();
 render();
 </script>
