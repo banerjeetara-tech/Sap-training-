@@ -2844,6 +2844,67 @@ render=function(opts){
 document.getElementById('nav').addEventListener('click', function(){ webMode=false; }, true);
 document.getElementById('q').addEventListener('focus', function(){ if(webMode){ webMode=false; render(); } });
 
+/* ===== v2026-09-19-A · fresher web search (news-first, date-sorted) + Claude/Gemini ===== */
+APP_VERSION = 'v2026-09-19-A · fresh web news';
+var WEB_EXPAND={pf:'EPFO PF provident fund',epf:'EPFO provident fund',epfo:'EPFO provident fund',esi:'ESIC ESI',esic:'ESIC ESI',
+  tds:'TDS salary income tax',pt:'professional tax',lwf:'labour welfare fund',nps:'NPS pension',gratuity:'gratuity',
+  'labour code':'new labour codes India',bonus:'bonus act payment',itr:'income tax return ITR'};
+function expandQ(q){ var k=q.toLowerCase().trim(); return WEB_EXPAND[k]||q; }
+function timeAgoWeb(ts){ if(!ts) return ''; var m=Math.round((Date.now()-ts)/60000);
+  if(m<60) return Math.max(m,1)+'m ago'; var h=Math.round(m/60); if(h<24) return h+'h ago'; var d=Math.round(h/24); return d+'d ago'; }
+function viaBridge(rss){
+  var c=new AbortController(); setTimeout(function(){c.abort();},9000);
+  return fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(rss),{signal:c.signal,cache:'no-store'})
+    .then(function(r){return r.json();}).then(function(j){ if(!j||j.status!=='ok') throw 0;
+      return (j.items||[]).map(function(i){ return {t:i.title||'',l:i.link||'',d:String(i.description||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,220),ts:Date.parse((i.pubDate||'').replace(' ','T')+'Z')||0}; }); });
+}
+function fetchFeed(url, src){
+  return webFetch(url).then(function(tx){ return parseRss(tx,src); })
+    .catch(function(){ return viaBridge(url).then(function(a){ a.forEach(function(x){x.src=src;}); return a; }); });
+}
+doWebSearch=function(){
+  var q=query.trim(); if(!q||web.loading) return;
+  web={q:q,loading:true,res:[],err:''}; render();
+  var e=encodeURIComponent, xq=expandQ(q), seen={};
+  var gn=function(s){ return 'https://news.google.com/rss/search?q='+e(s)+'&hl=en-IN&gl=IN&ceid=IN:en'; };
+  var jobs=[
+    [gn(xq+' when:7d'),'News'],
+    [gn(xq+' when:30d'),'News'],
+    ['https://www.bing.com/news/search?q='+e(xq)+'&format=rss&mkt=en-IN&setlang=en&qft=sortbydate%3d%221%22','News'],
+    ['https://www.bing.com/news/search?q='+e(xq+' India')+'&format=rss&mkt=en-IN&setlang=en','News'],
+    ['https://www.bing.com/search?q='+e(xq+' India')+'&format=rss&mkt=en-IN&setlang=en','Web']
+  ].map(function(j){ return fetchFeed(j[0],j[1]).then(function(arr){
+      arr.forEach(function(r){
+        if(!r.t) return;
+        { var m=r.t.match(/\s[-–]\s([^-–]{2,40})$/); if(m && (r.src==='News' || m[1].length<25)){ r.pub=m[1].trim(); r.t=r.t.slice(0,m.index).trim(); } }
+        var k=r.t.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,60); if(seen[k]) return; seen[k]=1; web.res.push(r); });
+      web.res.sort(function(a,b){ if((a.src==='News')!==(b.src==='News')) return a.src==='News'?-1:1; return (b.ts||0)-(a.ts||0); });
+      if(web.q===q) render();
+    }).catch(function(){}); });
+  Promise.race([Promise.all(jobs), new Promise(function(r){setTimeout(r,15000);})]).then(function(){
+    if(web.q!==q) return; web.loading=false;
+    if(!web.res.length) web.err='Couldn’t load web results just now — use the buttons above to search in Safari.'; render(); });
+};
+webBlock=function(){
+  var q=query.trim(), e=encodeURIComponent, ai=q+' (India payroll / SAP HCM context)';
+  var links=[['Google','https://www.google.com/search?q='+e(q)],['Google News','https://news.google.com/search?q='+e(expandQ(q)+' when:7d')+'&hl=en-IN&gl=IN&ceid=IN:en'],
+    ['YouTube','https://www.youtube.com/results?search_query='+e(q+' SAP payroll')],['SAP Help','https://help.sap.com/docs/search?q='+e(q)],
+    ['Claude','https://claude.ai/new?q='+e(ai)],['ChatGPT','https://chatgpt.com/?q='+e(ai)],['Gemini','https://gemini.google.com/app?q='+e(ai)]];
+  var h='<div class="srgroup" id="sr-web"><h3>From the web</h3>'+
+    '<div class="weblinks">'+links.map(function(l){return '<a href="'+l[1]+'" target="_blank" rel="noopener">'+l[0]+' &#8599;</a>';}).join('')+'</div>';
+  if(web.q!==q) return h+'<button class="webbtn" data-websearch="1">&#127760; Search the web for “'+esc(q)+'”</button></div>';
+  var news=web.res.filter(function(r){return r.src==='News';}), pages=web.res.filter(function(r){return r.src!=='News';});
+  function card(r,i){ var dom=(r.l.match(/\/\/([^\/]+)/)||['',''])[1].replace(/^www\./,'');
+    return '<a class="sritem webres" style="animation-delay:'+Math.min(i,8)*30+'ms" href="'+esc(r.l)+'" target="_blank" rel="noopener">'+
+      '<span class="tag">'+esc(r.pub||(r.src==='News'?'News':dom))+'</span><span class="wdom">'+(r.ts?timeAgoWeb(r.ts):(r.pub?'':''))+'</span>'+
+      '<div class="t" style="margin-top:4px">'+hl(r.t)+'</div>'+(r.d&&r.d.indexOf(r.t.slice(0,30))<0?'<div class="s">'+hl(r.d)+'</div>':'')+'</a>'; }
+  if(news.length) h+='<div class="section-title">Latest news · newest first</div>'+news.slice(0,25).map(card).join('');
+  if(pages.length) h+='<div class="section-title">Web pages</div>'+pages.slice(0,10).map(card).join('');
+  if(web.loading) h+='<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+  else if(web.err) h+='<div class="empty" style="padding:14px">'+esc(web.err)+'</div>';
+  return h+'</div>';
+};
+
 refreshRing();
 render();
 </script>
