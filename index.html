@@ -516,6 +516,8 @@ html[data-th] header::after{content:"";position:absolute;left:0;right:0;bottom:0
 .wdom{font-size:10.5px;color:var(--soft,#646E87)}
 .skel{height:64px;border-radius:12px;margin-bottom:7px;background:linear-gradient(90deg,var(--tint,#eee) 25%,var(--card,#fff) 50%,var(--tint,#eee) 75%);background-size:200% 100%;animation:shimmer 1.2s infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
+.wsrow{display:flex;gap:8px;margin:6px 0 10px}.wsrow .search{flex:1}.wsrow .savebtn{flex:none;padding:0 16px}
+#btnWeb.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 /* settings page */
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
 .thbtn{border:1.5px solid var(--line);border-radius:14px;padding:10px;text-align:left;background:var(--card);color:var(--ink);font-weight:700;font-size:12.5px}
@@ -2764,7 +2766,7 @@ function doWebSearch(){
     ['https://www.bing.com/news/search?q='+e(q+' payroll')+'&format=rss&mkt=en-IN','News']
   ].map(function(j){ return webFetch(j[0]).then(function(tx){
       parseRss(tx,j[1]).forEach(function(r){ var k=(r.l||r.t).toLowerCase(); if(!r.t||seen[k]) return; seen[k]=1; web.res.push(r); });
-      if(web.q===query.trim()) render();
+      if(web.q===q) render();
     }).catch(function(){}); });
   var done=function(){ if(web.q!==q) return; web.loading=false; if(!web.res.length) web.err='Couldn’t load web results just now — use the buttons above to search in Safari.'; render(); };
   Promise.race([Promise.all(jobs), new Promise(function(r){setTimeout(r,14000);})]).then(done);
@@ -2804,6 +2806,43 @@ app.addEventListener('click', function(e){
     if(web.q!==query.trim()) doWebSearch(); }
 }, true);
 document.getElementById('q').addEventListener('keydown', function(e){ if(e.key==='Enter' && query) setTimeout(function(){ doWebSearch(); var g=document.getElementById('sr-web'); if(g) window.scrollTo({top:g.getBoundingClientRect().top+window.scrollY-64,behavior:'smooth'}); },50); });
+
+/* ===== v2026-09-18-F · 🌐 web search button in header (Brief-style page) ===== */
+APP_VERSION = 'v2026-09-18-F · web button';
+var webMode=false;
+(function(){
+  var b=document.createElement('button'); b.className='hbtn'; b.id='btnWeb'; b.title='Web search'; b.innerHTML='&#127760;';
+  var t=document.getElementById('btnTheme'); t.parentNode.insertBefore(b,t);
+  b.addEventListener('click', function(){ webMode=!webMode; if(webMode){ clearSearch(); } render(); window.scrollTo(0,0);
+    if(webMode) setTimeout(function(){ var i=document.getElementById('wsq'); if(i) i.focus(); },60); });
+})();
+function renderWeb(){
+  var q=web.q||'';
+  var html='<div class="srhead"><h2>&#127760; Web search</h2><button class="back" data-webclose="1">Close ✕</button></div>'+
+    '<div class="wsrow"><input id="wsq" class="search" placeholder="Search SAP, payroll, statutory rules…" value="'+esc(q)+'" autocomplete="off"><button class="savebtn" data-wsgo="1">Search</button></div>';
+  if(!q) html+='<div class="hint">Search the internet for anything — T-codes, PF/ESI/TDS rules, SAP errors. Results open in Safari.</div>';
+  else { var keep=query; query=q.toLowerCase(); html+=webBlock(); query=keep; }
+  app.innerHTML=html;
+  var i=document.getElementById('wsq');
+  i.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); goWeb(); } });
+}
+function goWeb(){ var i=document.getElementById('wsq'); var v=(i&&i.value||'').trim(); if(!v) return;
+  if(i) i.blur(); var keep=query; query=v.toLowerCase(); web.q=''; doWebSearch(); web.q=v.toLowerCase(); query=keep; }
+// doWebSearch reads `query`; make it respect web page input
+var _doWebSearchF=doWebSearch;
+doWebSearch=function(){ _doWebSearchF(); };
+app.addEventListener('click', function(e){
+  if(e.target.closest('[data-wsgo]')){ e.stopPropagation(); goWeb(); return; }
+  if(e.target.closest('[data-webclose]')){ e.stopPropagation(); webMode=false; render(); return; }
+}, true);
+var _renderF=render;
+render=function(opts){
+  var bw=document.getElementById('btnWeb'); if(bw) bw.classList.toggle('on', webMode);
+  if(webMode){ renderWeb(); document.querySelectorAll('nav button').forEach(function(b){b.classList.remove('on');}); return; }
+  _renderF(opts);
+};
+document.getElementById('nav').addEventListener('click', function(){ webMode=false; }, true);
+document.getElementById('q').addEventListener('focus', function(){ if(webMode){ webMode=false; render(); } });
 
 refreshRing();
 render();
