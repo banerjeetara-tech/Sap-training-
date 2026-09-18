@@ -518,6 +518,12 @@ html[data-th] header::after{content:"";position:absolute;left:0;right:0;bottom:0
 @keyframes shimmer{to{background-position:-200% 0}}
 .wsrow{display:flex;gap:8px;margin:6px 0 10px}.wsrow .search{flex:1}.wsrow .savebtn{flex:none;padding:0 16px}
 #btnWeb.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.qdate{display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--tint,#EEF3FA);border-radius:10px;padding:8px 10px;margin:8px 0 2px;font-size:11.5px;font-weight:700;color:var(--accent,#1F5AA6)}
+.qdate input{flex:1;min-width:110px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);font-size:13px;background:var(--card,#fff);color:var(--ink)}
+.qdate .savebtn{flex:none;padding:8px 12px}
+.noterow{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:5px}
+.nsaved{font-size:10.5px;color:var(--green);font-weight:700}
+.flexgrp{font-size:12px;font-weight:800;color:var(--accent,#1F5AA6);margin:14px 2px 6px;padding-bottom:4px;border-bottom:1px solid var(--line)}
 /* settings page */
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
 .thbtn{border:1.5px solid var(--line);border-radius:14px;padding:10px;text-align:left;background:var(--card);color:var(--ink);font-weight:700;font-size:12.5px}
@@ -2934,6 +2940,100 @@ app.addEventListener('click', function(e){
   var i=document.getElementById('wsq'); var q=(i&&i.value||'').trim();
   window.open(webLinkFor(a.dataset.wq, q), '_blank', 'noopener');
 }, true);
+
+/* ===== v2026-09-19-C · dates for flexible works + visible Save buttons ===== */
+APP_VERSION = 'v2026-09-19-C · set dates + save buttons';
+function parseDays(v){
+  v=String(v||'').replace(/(st|nd|rd|th)/gi,'').trim(); if(!v) return [];
+  var out=[];
+  v.split(/[,\s]+/).forEach(function(p){
+    var m=p.match(/^(\d{1,2})\s*[-–to]+\s*(\d{1,2})$/);
+    if(m){ var a=+m[1], b=+m[2]; if(a>=1&&a<=31&&b>=1&&b<=31){ var i=a; for(var g=0;g<31;g++){ out.push(i); if(i===b) break; i=i%31+1; } } }
+    else if(/^\d{1,2}$/.test(p) && +p>=1 && +p<=31) out.push(+p);
+  });
+  return out.filter(function(d,i){return out.indexOf(d)===i;});
+}
+function daysText(days){ if(!days||!days.length) return '';
+  if(days.length>1){ var contiguous=days.every(function(d,i){return i===0||d===days[i-1]%31+1;}); if(contiguous) return days[0]+'-'+days[days.length-1]; }
+  return days.join(', '); }
+editForm=function(x, kind){
+  var days=itemDays(x);
+  return '<div class="addform" style="padding:0 0 4px">'+
+    '<label class="flab">Work name</label><input id="efTitle" value="'+esc(x.activity)+'" placeholder="Work name">'+
+    (kind==='sap'?'':'<label class="flab">Date(s) in the payroll month</label><input id="efDate" value="'+esc(daysText(days))+'" placeholder="e.g. 25  or  28-29  or  1, 2   (blank = flexible)">'+
+      '<label class="flab">When / timing note</label><input id="efWhen" value="'+esc(x.when||'')+'" placeholder="e.g. before payroll, after IT data push">')+
+    '<div class="formrow"><button class="savebtn" data-editsave="'+kind+':'+x.id+'">&#10003; Save</button>'+
+    '<button class="cancelbtn" data-editcancel="1">Cancel</button></div></div>';
+};
+saveEdit=function(kind, id){
+  var t=(document.getElementById('efTitle')||{}).value||'';
+  if(!t.trim()){ toast('Name needed'); return; }
+  var patch={activity:t.trim()};
+  var dEl=document.getElementById('efDate'), wEl=document.getElementById('efWhen');
+  if(kind!=='sap' && dEl){
+    var ds=parseDays(dEl.value);
+    if(dEl.value.trim() && !ds.length){ toast('Date not understood — try 25 or 28-29'); return; }
+    patch.days=ds;
+  }
+  if(wEl) patch.when=wEl.value.trim();
+  var cl=customList(kind), ci=cl.findIndex(function(c){return c.id===id;});
+  if(ci>=0) Object.assign(cl[ci],patch); else mem.edits[id]=Object.assign(mem.edits[id]||{},patch);
+  save(); editOpen=null;
+  toast(patch.days&&patch.days.length?'Saved · now on '+daysText(patch.days):'Saved');
+  render();
+};
+function quickDate(id, kind){
+  var v=(document.getElementById('qd-'+id)||{}).value||''; var ds=parseDays(v);
+  if(!ds.length){ toast('Type a date like 25 or 28-29'); return; }
+  var cl=customList(kind), ci=cl.findIndex(function(c){return c.id===id;});
+  if(ci>=0) cl[ci].days=ds; else mem.edits[id]=Object.assign(mem.edits[id]||{},{days:ds});
+  save(); toast('Saved · moved to '+daysText(ds)); render();
+}
+var _bodyForC=bodyFor;
+bodyFor=function(x, kind){
+  var h=_bodyForC(x, kind);
+  if(editOpen===x.id || kind==='sap' || itemDays(x).length) return h;
+  var qd='<div class="qdate"><span>&#128197; No date yet</span><input id="qd-'+x.id+'" inputmode="numeric" placeholder="e.g. 25 or 28-29">'+
+    '<button class="savebtn" data-qdsave="'+kind+':'+x.id+'">Save date</button></div>';
+  return qd+h;
+};
+var _chipRowC=chipRow;
+chipRow=function(id, kind){
+  return _chipRowC(id, kind).replace(/(<textarea class="notes"[^>]*>[^<]*<\/textarea>)/,
+    '$1<div class="noterow"><span class="nsaved" id="ns-'+id+'">'+(mem.notes[id]?'&#10003; saved':'')+'</span><button class="ministep" data-notesave="'+id+'">&#10003; Save note</button></div>');
+};
+app.addEventListener('click', function(e){
+  var b;
+  if(b=e.target.closest('[data-qdsave]')){ e.stopPropagation(); var p=b.dataset.qdsave.split(':'); quickDate(p.slice(1).join(':'), p[0]); return; }
+  if(b=e.target.closest('[data-notesave]')){ e.stopPropagation(); var id=b.dataset.notesave;
+    var ta=app.querySelector('[data-note="'+id+'"]'); if(ta){ mem.notes[id]=ta.value; save(); }
+    var s=document.getElementById('ns-'+id); if(s) s.innerHTML='&#10003; saved'; toast('Note saved'); return; }
+}, true);
+app.addEventListener('input', function(e){
+  var n=e.target.closest('[data-note]'); if(!n) return; var s=document.getElementById('ns-'+n.dataset.note); if(s) s.textContent='saving…';
+  clearTimeout(n._t); n._t=setTimeout(function(){ if(s) s.innerHTML='&#10003; saved'; },600);
+});
+app.addEventListener('keydown', function(e){
+  if(e.key==='Enter' && e.target.id && e.target.id.indexOf('qd-')===0){ e.preventDefault(); var btn=e.target.parentNode.querySelector('[data-qdsave]'); if(btn) btn.click(); }
+});
+// Flexible list: group by timing note so it's structured
+var _renderCalC=renderCal;
+renderCal=function(){
+  _renderCalC();
+  if(selDay!=='flex' || query) return;
+  var wrap=app.querySelector('.daydetail'); if(!wrap) return;
+  var byId={}; allDayItems().forEach(function(x){ byId[x.id]=x; });
+  var groups={}, order=[];
+  Array.prototype.slice.call(wrap.querySelectorAll('[data-card]')).forEach(function(c){
+    var x=byId[c.dataset.card]||{}; var w=(x.when||'').trim(); var k=w?w.charAt(0).toUpperCase()+w.slice(1):'No timing set';
+    var kk=k.toLowerCase(); if(!groups[kk]){ groups[kk]={label:k,cards:[]}; order.push(kk); } groups[kk].cards.push(c); });
+  order.sort(function(a,b){ return (a==='no timing set')-(b==='no timing set') || groups[b].cards.length-groups[a].cards.length; });
+  var hint=document.createElement('div'); hint.className='hint'; hint.innerHTML='These works have no date yet. Open one and type a date in <b>No date yet</b> → <b>Save date</b> to move it onto the calendar.';
+  wrap.querySelector('.section-title').insertAdjacentElement('afterend', hint);
+  var anchor=hint;
+  order.forEach(function(k){ var g=groups[k]; var t=document.createElement('div'); t.className='flexgrp'; t.textContent=g.label+' · '+g.cards.length;
+    anchor.insertAdjacentElement('afterend', t); anchor=t; g.cards.forEach(function(c){ anchor.insertAdjacentElement('afterend', c); anchor=c; }); });
+};
 
 refreshRing();
 render();
