@@ -505,15 +505,17 @@ html[data-th="dark"] .toast,html[data-th="dark"] .vlink,html[data-th="dark"] .sf
 html[data-th="dark"] .srclear{background:var(--tint);color:var(--ink)}
 html[data-th] .legend{display:none}
 html[data-th] .calstrip{justify-content:flex-end}
-html[data-th="emami"]{--bg:#F7F8FB;--card:#FFFFFF;--ink:#1B2440;--soft:#646E87;--line:#E3E7EF;--accent:#1F5AA6;--tint:#E8EFF9;--warm:#E8A317}
-html[data-th="emami"] header{border-bottom:0;box-shadow:none;position:sticky}
-html[data-th="emami"] header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,#E23B2E,#F08A24,#F2D22E,#4DB04A,#3FA9DC,#3B3F99,#7B3A92)}
-html[data-th="emami"] header h1{color:#1F5AA6}
-html[data-th="emami"] .todaycard{border-left:0;position:relative;overflow:hidden}
-html[data-th="emami"] .todaycard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#E23B2E,#F08A24,#F2D22E,#4DB04A,#3FA9DC,#3B3F99)}
-html[data-th="emami"] .dtile.sel{background:linear-gradient(160deg,#2A6BC0,#1F4F96)}
-html[data-th="emami"] .dtile.today:not(.sel){border-color:#4DB04A}
-html[data-th="emami"] nav button.on::after{background:linear-gradient(90deg,#E23B2E,#F2D22E,#4DB04A,#3FA9DC)}
+html[data-th] header{position:sticky;border-bottom:0}
+html[data-th] header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:4px;background:linear-gradient(90deg,#E23B2E,#F08A24,#F2D22E,#4DB04A,#3FA9DC,#3B3F99,#7B3A92)}
+/* web search */
+.srjump a.webchip{background:var(--accent,#1F5AA6);color:#fff;border-color:var(--accent,#1F5AA6)}
+.weblinks{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.weblinks a{text-decoration:none;background:var(--tint,#EEF3FA);color:var(--accent,#1F5AA6);border-radius:999px;padding:7px 12px;font-size:11.5px;font-weight:700}
+.webbtn{width:100%;padding:13px;border-radius:12px;border:1.5px dashed var(--accent,#1F5AA6);background:var(--card,#fff);color:var(--accent,#1F5AA6);font-weight:700;font-size:13px}
+.webres{border-left:3px solid var(--accent,#1F5AA6);animation:slideup .3s both}
+.wdom{font-size:10.5px;color:var(--soft,#646E87)}
+.skel{height:64px;border-radius:12px;margin-bottom:7px;background:linear-gradient(90deg,var(--tint,#eee) 25%,var(--card,#fff) 50%,var(--tint,#eee) 75%);background-size:200% 100%;animation:shimmer 1.2s infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
 /* settings page */
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
 .thbtn{border:1.5px solid var(--line);border-radius:14px;padding:10px;text-align:left;background:var(--card);color:var(--ink);font-weight:700;font-size:12.5px}
@@ -2631,14 +2633,14 @@ render = function(opts){
 
 /* ===== v2026-09-18-B · themes + settings (hide / delete tabs) ===== */
 APP_VERSION = 'v2026-09-18-B · themes + settings';
-var THEMES=[['emami','Emami',['#FFFFFF','#1F5AA6','#4DB04A']],['smooth','Smooth',['#F0EEF6','#5C4B8C','#AE5F5B']],['sage','Sage',['#EDF1EA','#456F53','#A2613B']],['dawn','Dawn',['#F6EFEA','#8C5A46','#5C6E7A']],['dark','Dark',['#191A22','#9C8BD6','#D98A80']]];
-function getTheme(){ try{ return localStorage.getItem('plTheme3')||'emami'; }catch(e){ return 'smooth'; } }
+var THEMES=[['smooth','Smooth',['#F0EEF6','#5C4B8C','#AE5F5B']],['sage','Sage',['#EDF1EA','#456F53','#A2613B']],['dawn','Dawn',['#F6EFEA','#8C5A46','#5C6E7A']],['dark','Dark',['#191A22','#9C8BD6','#D98A80']]];
+function getTheme(){ try{ return localStorage.getItem('plTheme4')||'smooth'; }catch(e){ return 'smooth'; } }
 function applyTheme(t){
   document.documentElement.classList.remove('classic');
   document.documentElement.setAttribute('data-th', t);
   var m=document.querySelector('meta[name="theme-color"]'); var th=THEMES.find(function(x){return x[0]===t;});
   if(m&&th) m.setAttribute('content', th[2][0]);
-  try{ localStorage.setItem('plTheme3', t); }catch(e){}
+  try{ localStorage.setItem('plTheme4', t); }catch(e){}
 }
 applyTheme(getTheme());
 statusFilter='all';
@@ -2724,6 +2726,84 @@ app.addEventListener('click', function(e){
     mem.sections=(mem.sections||[]).filter(function(s){return s.id!==id;}); save(); toast('Deleted'); render(); return; }
 }, true);
 applyNavTabs();
+
+/* ===== v2026-09-18-E · web search (Brief-style) ===== */
+APP_VERSION = 'v2026-09-18-E · web search';
+var WEB_PROXIES=[
+  function(u){return 'https://newnewsdeploy.banerjee-tara.workers.dev/?url='+encodeURIComponent(u);},
+  function(u){return 'https://corsproxy.io/?url='+encodeURIComponent(u);},
+  function(u){return 'https://api.allorigins.win/raw?url='+encodeURIComponent(u);}
+];
+var web={q:'',loading:false,res:[],err:''};
+function webFetch(url){
+  var fresh=url+(url.indexOf('?')>-1?'&':'?')+'_='+Date.now();
+  var tries=WEB_PROXIES.map(function(mk){
+    var c=new AbortController(); var t=setTimeout(function(){c.abort();},8000);
+    return fetch(mk(fresh),{cache:'no-store',signal:c.signal}).then(function(r){clearTimeout(t); if(!r.ok) throw 0; return r.text();})
+      .then(function(tx){ if(!/<item/i.test(tx)) throw 0; return tx; });
+  });
+  return Promise.any ? Promise.any(tries) : tries[0];
+}
+function parseRss(tx, src){
+  var out=[]; try{
+    var doc=new DOMParser().parseFromString(tx,'text/xml');
+    Array.prototype.forEach.call(doc.querySelectorAll('item'),function(it){
+      var g=function(n){var e=it.querySelector(n);return e?e.textContent.trim():'';};
+      var d=g('description').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+      out.push({t:g('title'),l:g('link'),d:d.slice(0,220),src:src,ts:Date.parse(g('pubDate'))||0});
+    });
+  }catch(e){} return out;
+}
+function doWebSearch(){
+  var q=query.trim(); if(!q||web.loading) return;
+  web={q:q,loading:true,res:[],err:''}; render();
+  var e=encodeURIComponent, seen={};
+  var jobs=[
+    ['https://www.bing.com/search?q='+e(q+' SAP payroll India')+'&format=rss&mkt=en-IN&setlang=en','Web'],
+    ['https://www.bing.com/search?q='+e(q)+'&format=rss&mkt=en-IN&setlang=en','Web'],
+    ['https://www.bing.com/news/search?q='+e(q+' payroll')+'&format=rss&mkt=en-IN','News']
+  ].map(function(j){ return webFetch(j[0]).then(function(tx){
+      parseRss(tx,j[1]).forEach(function(r){ var k=(r.l||r.t).toLowerCase(); if(!r.t||seen[k]) return; seen[k]=1; web.res.push(r); });
+      if(web.q===query.trim()) render();
+    }).catch(function(){}); });
+  var done=function(){ if(web.q!==q) return; web.loading=false; if(!web.res.length) web.err='Couldn’t load web results just now — use the buttons above to search in Safari.'; render(); };
+  Promise.race([Promise.all(jobs), new Promise(function(r){setTimeout(r,14000);})]).then(done);
+}
+function webBlock(){
+  var q=query.trim(), e=encodeURIComponent;
+  var links=[['Google','https://www.google.com/search?q='+e(q)],['Google + SAP','https://www.google.com/search?q='+e(q+' SAP HCM payroll India')],
+    ['YouTube','https://www.youtube.com/results?search_query='+e(q+' SAP payroll')],['SAP Help','https://help.sap.com/docs/search?q='+e(q)],
+    ['ChatGPT','https://chatgpt.com/?q='+e(q+' (SAP HCM India payroll)')]];
+  var h='<div class="srgroup" id="sr-web"><h3>From the web</h3>'+
+    '<div class="weblinks">'+links.map(function(l){return '<a href="'+l[1]+'" target="_blank" rel="noopener">'+l[0]+' &#8599;</a>';}).join('')+'</div>';
+  if(web.q!==q) h+='<button class="webbtn" data-websearch="1">&#127760; Search the web for “'+esc(q)+'”</button>';
+  else {
+    web.res.forEach(function(r,i){
+      h+='<a class="sritem webres" style="animation-delay:'+Math.min(i,8)*30+'ms" href="'+esc(r.l)+'" target="_blank" rel="noopener"><span class="tag">'+esc(r.src)+'</span>'+
+        '<span class="wdom">'+esc((r.l.match(/\/\/([^\/]+)/)||['',''])[1].replace(/^www\./,''))+'</span>'+
+        '<div class="t" style="margin-top:4px">'+hl(r.t)+'</div>'+(r.d?'<div class="s">'+hl(r.d)+'</div>':'')+'</a>';
+    });
+    if(web.loading) h+='<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+    else if(web.err) h+='<div class="empty" style="padding:14px">'+esc(web.err)+'</div>';
+  }
+  return h+'</div>';
+}
+var _renderSearchE=renderSearch;
+renderSearch=function(){
+  _renderSearchE();
+  var head=app.querySelector('.srhead');
+  var jr=app.querySelector('.srjump'), chip='<a href="#sr-web" class="webchip" data-webjump="1">&#127760; Web</a>';
+  if(jr) jr.insertAdjacentHTML('afterbegin',chip); else if(head) head.insertAdjacentHTML('afterend','<div class="srjump">'+chip+'</div>');
+  app.insertAdjacentHTML('beforeend', webBlock());
+  var em=app.querySelector('.empty'); if(em && /Nothing found anywhere/.test(em.textContent)) em.innerHTML='Nothing in your app for “'+esc(query)+'” — try the web below.';
+};
+app.addEventListener('click', function(e){
+  if(e.target.closest('[data-websearch]')){ e.stopPropagation(); doWebSearch(); return; }
+  if(e.target.closest('[data-webjump]')){ e.stopPropagation(); e.preventDefault(); var g=document.getElementById('sr-web');
+    if(g) window.scrollTo({top:g.getBoundingClientRect().top+window.scrollY-64,behavior:'smooth'});
+    if(web.q!==query.trim()) doWebSearch(); }
+}, true);
+document.getElementById('q').addEventListener('keydown', function(e){ if(e.key==='Enter' && query) setTimeout(function(){ doWebSearch(); var g=document.getElementById('sr-web'); if(g) window.scrollTo({top:g.getBoundingClientRect().top+window.scrollY-64,behavior:'smooth'}); },50); });
 
 refreshRing();
 render();
