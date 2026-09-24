@@ -533,6 +533,19 @@ html[data-th] header::after{content:"";position:absolute;left:0;right:0;bottom:0
 .ogbody{font-size:11.5px;line-height:1.5;color:var(--ink);background:var(--tint,#EEF3FA);border-radius:9px;padding:8px 10px;margin-top:8px;white-space:pre-wrap;word-break:break-word}
 .ogrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
 .ogrow .ministep{text-decoration:none}
+.ogview{position:fixed;inset:0;z-index:100002;background:var(--bg,#F2F4F7);display:flex;flex-direction:column}
+.ogbar{display:flex;align-items:center;gap:10px;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;background:var(--card,#fff);border-bottom:1px solid var(--line)}
+.ogbar button{border:1px solid var(--line);background:var(--tint,#EEF3FA);color:var(--accent,#2B6BF3);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;flex:none}
+.ogbar .nm{flex:1;text-align:center;font-size:12px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ogstage{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;display:flex;align-items:flex-start;justify-content:center;padding:10px;padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+.ogstage img{max-width:100%;height:auto;border-radius:10px;box-shadow:0 2px 14px rgba(0,0,0,.14)}
+.ogstage iframe{width:100%;height:100%;min-height:70vh;border:0;border-radius:10px;background:#fff}
+.ogmsg{text-align:center;padding:36px 22px;color:var(--ink)}
+.ogmsg .ic{font-size:42px}
+.ogmsg .t{font-size:14px;font-weight:700;margin:10px 0 6px;word-break:break-word}
+.ogmsg p{font-size:12.5px;line-height:1.55;color:var(--soft,#6C7690)}
+.ogpages{width:100%;display:flex;flex-direction:column;gap:10px}
+.ogpage{display:block;width:100%;border-radius:8px;background:#fff;box-shadow:0 1px 8px rgba(0,0,0,.12)}
 /* settings page */
 .setgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
 .thbtn{border:1.5px solid var(--line);border-radius:14px;padding:10px;text-align:left;background:var(--card);color:var(--ink);font-weight:700;font-size:12.5px}
@@ -3196,6 +3209,126 @@ renderSearch = function(){
   if(web) web.insertAdjacentHTML('beforebegin',block); else app.insertAdjacentHTML('beforeend',block);
   var jr=app.querySelector('.srjump');
   if(jr) jr.insertAdjacentHTML('beforeend','<a href="#sr-org" data-srjump="org">Org knowledge<b>'+n+'</b></a>');
+};
+
+/* ===== v2026-09-24-B · Org knowledge: in-app viewer (iOS-safe) ===== */
+APP_VERSION = 'v2026-09-24-B · org viewer';
+function dataToBlob(d){
+  var p=d.split(','), m=(p[0].match(/:(.*?);/)||[,'application/octet-stream'])[1];
+  var bin=atob(p[1]), n=bin.length, u=new Uint8Array(n);
+  while(n--) u[n]=bin.charCodeAt(n);
+  return new Blob([u],{type:m});
+}
+function orgBlobUrl(f){
+  if(!f._url){ try{ f._url=URL.createObjectURL(dataToBlob(f.data)); }catch(e){ return null; } }
+  return f._url;
+}
+function orgShare(f){
+  var url=orgBlobUrl(f); if(!url) { toast("Couldn't open that file"); return; }
+  try{
+    var file=new File([dataToBlob(f.data)], f.name||'file', {type:f.mime||'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:f.title||f.name}).catch(function(){});
+      return;
+    }
+  }catch(e){}
+  var a=document.createElement('a'); a.href=url; a.download=f.name||'file';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 400);
+}
+function orgOpen(id){
+  var f=orgList().find(function(x){return x.id===id;}); if(!f||!f.data) return;
+  var kind=orgKind(f.name,f.mime), url=orgBlobUrl(f);
+  var ov=document.createElement('div'); ov.className='ogview';
+  var inner='';
+  if(kind==='image') inner='<img src="'+f.data+'" alt="">';
+  else if(kind==='pdf') inner='<iframe src="'+url+'#view=FitH" title="PDF"></iframe>';
+  else inner='<div class="ogmsg"><div class="ic">'+ORG_ICON[kind]+'</div>'+
+      '<div class="t">'+esc(f.name||f.title||'File')+'</div>'+
+      '<p>This file type opens in another app on your phone. Tap <b>Open in…</b> and choose Excel, Word, Files or Books.</p></div>';
+  ov.innerHTML='<div class="ogbar"><button data-ogclose="1">&#10005; Close</button>'+
+      '<span class="nm">'+esc(f.title||f.name||'')+'</span>'+
+      '<button data-ogshare="'+esc(f.id)+'">&#8593; Open in…</button></div>'+
+      '<div class="ogstage">'+inner+'</div>';
+  ov.addEventListener('click', function(e){
+    if(e.target.closest('[data-ogclose]')){ ov.remove(); return; }
+    var s=e.target.closest('[data-ogshare]');
+    if(s){ var ff=orgList().find(function(x){return x.id===s.dataset.ogshare;}); if(ff) orgShare(ff); }
+  });
+  document.body.appendChild(ov);
+}
+/* swap the old links for buttons that work inside the installed app */
+var _renderOrgB = renderOrg;
+renderOrg = function(){
+  _renderOrgB();
+  app.querySelectorAll('.ogrow').forEach(function(row){
+    var ed=row.querySelector('[data-ogedit]'); if(!ed) return;
+    var id=ed.dataset.ogedit;
+    var f=orgList().find(function(x){return x.id===id;});
+    row.querySelectorAll('a.ministep').forEach(function(a){ a.remove(); });
+    if(f && f.data){
+      var kind=orgKind(f.name,f.mime);
+      ed.insertAdjacentHTML('beforebegin',
+        '<button class="ministep" data-ogopen="'+esc(id)+'">&#128065; '+(kind==='image'||kind==='pdf'?'View':'Preview')+'</button>'+
+        '<button class="ministep" data-ogshare2="'+esc(id)+'">&#8593; Open in…</button>');
+    }
+  });
+};
+app.addEventListener('click', function(e){
+  var b;
+  if(b=e.target.closest('[data-ogopen]')){ e.stopPropagation(); e.preventDefault(); orgOpen(b.dataset.ogopen); return; }
+  if(b=e.target.closest('[data-ogshare2]')){ e.stopPropagation(); e.preventDefault();
+    var f=orgList().find(function(x){return x.id===b.dataset.ogshare2;}); if(f) orgShare(f); return; }
+}, true);
+
+/* ===== v2026-09-24-C · PDF pages render inside the app ===== */
+APP_VERSION = 'v2026-09-24-C · org viewer + pdf pages';
+function ensurePDFJS(cb){
+  if(window.pdfjsLib) return cb();
+  toast('Loading PDF viewer…');
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  s.onload=function(){ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} cb(); };
+  s.onerror=function(){ cb(new Error('no-net')); };
+  document.head.appendChild(s);
+}
+function orgRenderPdf(stage, f){
+  stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">Opening…</div></div>';
+  ensurePDFJS(function(err){
+    if(err){ stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">'+esc(f.name||'PDF')+'</div>'+
+      '<p>Needs internet the first time to open PDFs inside the app. Tap <b>Open in…</b> to read it in Books or Files instead.</p></div>'; return; }
+    var raw=atob(f.data.split(',')[1]), n=raw.length, arr=new Uint8Array(n);
+    while(n--) arr[n]=raw.charCodeAt(n);
+    pdfjsLib.getDocument({data:arr}).promise.then(function(pdf){
+      stage.innerHTML='<div class="ogpages"></div>';
+      var wrap=stage.querySelector('.ogpages');
+      var width=Math.min(stage.clientWidth-20, 1100);
+      var step=function(i){
+        if(i>pdf.numPages) return;
+        pdf.getPage(i).then(function(page){
+          var vp0=page.getViewport({scale:1});
+          var scale=(width/vp0.width)*Math.min(window.devicePixelRatio||1,2);
+          var vp=page.getViewport({scale:scale});
+          var cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
+          cv.style.width='100%'; cv.className='ogpage';
+          wrap.appendChild(cv);
+          page.render({canvasContext:cv.getContext('2d'), viewport:vp}).promise.then(function(){ step(i+1); })
+            .catch(function(){ step(i+1); });
+        }).catch(function(){ step(i+1); });
+      };
+      step(1);
+    }).catch(function(){
+      stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">'+esc(f.name||'PDF')+'</div>'+
+        '<p>Couldn’t show this PDF inside the app. Tap <b>Open in…</b> to read it in Books or Files.</p></div>';
+    });
+  });
+}
+var _orgOpenC = orgOpen;
+orgOpen = function(id){
+  _orgOpenC(id);
+  var f=orgList().find(function(x){return x.id===id;}); if(!f) return;
+  if(orgKind(f.name,f.mime)!=='pdf') return;
+  var ov=document.querySelectorAll('.ogview'); ov=ov[ov.length-1]; if(!ov) return;
+  var stage=ov.querySelector('.ogstage'); if(stage) orgRenderPdf(stage, f);
 };
 
 refreshRing();
