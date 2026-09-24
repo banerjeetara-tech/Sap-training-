@@ -3268,7 +3268,7 @@ renderOrg = function(){
     if(f && f.data){
       var kind=orgKind(f.name,f.mime);
       ed.insertAdjacentHTML('beforebegin',
-        '<button class="ministep" data-ogopen="'+esc(id)+'">&#128065; '+(kind==='image'||kind==='pdf'?'View':'Preview')+'</button>'+
+        '<button class="ministep" data-ogopen="'+esc(id)+'">&#128065; '+(kind==='image'?'View':(kind==='pdf'?'Open':'Preview'))+'</button>'+
         '<button class="ministep" data-ogshare2="'+esc(id)+'">&#8593; Open in…</button>');
     }
   });
@@ -3280,55 +3280,35 @@ app.addEventListener('click', function(e){
     var f=orgList().find(function(x){return x.id===b.dataset.ogshare2;}); if(f) orgShare(f); return; }
 }, true);
 
-/* ===== v2026-09-24-C · PDF pages render inside the app ===== */
-APP_VERSION = 'v2026-09-24-C · org viewer + pdf pages';
-function ensurePDFJS(cb){
-  if(window.pdfjsLib) return cb();
-  toast('Loading PDF viewer…');
-  var s=document.createElement('script');
-  s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-  s.onload=function(){ try{ pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){} cb(); };
-  s.onerror=function(){ cb(new Error('no-net')); };
-  document.head.appendChild(s);
+/* ===== v2026-09-24-D · PDF opens straight to the phone's own reader (no CDN, no blank screen) ===== */
+APP_VERSION = 'v2026-09-24-D · reliable PDF open';
+/* The in-page PDF.js/iframe preview depended on a live connection to cdnjs and
+   sometimes rendered blank on a real installed PWA. Skip it entirely: for a PDF,
+   send it straight to the phone's native PDF reader (Files/Books/etc.) via the
+   share sheet, or a direct download link as a fallback — both use the OS's own
+   PDF handling, which always works, instead of trying to draw the PDF ourselves. */
+function orgOpenPdfDirect(f){
+  var url=orgBlobUrl(f);
+  if(!url){ toast("Couldn't open that file"); return; }
+  try{
+    var file=new File([dataToBlob(f.data)], f.name||'file.pdf', {type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      navigator.share({files:[file], title:f.title||f.name}).catch(function(){});
+      return;
+    }
+  }catch(e){}
+  try{
+    var w=window.open(url, '_blank');
+    if(w) return;
+  }catch(e){}
+  var a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.download=f.name||'file.pdf';
+  document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 400);
 }
-function orgRenderPdf(stage, f){
-  stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">Opening…</div></div>';
-  ensurePDFJS(function(err){
-    if(err){ stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">'+esc(f.name||'PDF')+'</div>'+
-      '<p>Needs internet the first time to open PDFs inside the app. Tap <b>Open in…</b> to read it in Books or Files instead.</p></div>'; return; }
-    var raw=atob(f.data.split(',')[1]), n=raw.length, arr=new Uint8Array(n);
-    while(n--) arr[n]=raw.charCodeAt(n);
-    pdfjsLib.getDocument({data:arr}).promise.then(function(pdf){
-      stage.innerHTML='<div class="ogpages"></div>';
-      var wrap=stage.querySelector('.ogpages');
-      var width=Math.min(stage.clientWidth-20, 1100);
-      var step=function(i){
-        if(i>pdf.numPages) return;
-        pdf.getPage(i).then(function(page){
-          var vp0=page.getViewport({scale:1});
-          var scale=(width/vp0.width)*Math.min(window.devicePixelRatio||1,2);
-          var vp=page.getViewport({scale:scale});
-          var cv=document.createElement('canvas'); cv.width=vp.width; cv.height=vp.height;
-          cv.style.width='100%'; cv.className='ogpage';
-          wrap.appendChild(cv);
-          page.render({canvasContext:cv.getContext('2d'), viewport:vp}).promise.then(function(){ step(i+1); })
-            .catch(function(){ step(i+1); });
-        }).catch(function(){ step(i+1); });
-      };
-      step(1);
-    }).catch(function(){
-      stage.innerHTML='<div class="ogmsg"><div class="ic">&#128209;</div><div class="t">'+esc(f.name||'PDF')+'</div>'+
-        '<p>Couldn’t show this PDF inside the app. Tap <b>Open in…</b> to read it in Books or Files.</p></div>';
-    });
-  });
-}
-var _orgOpenC = orgOpen;
+var _orgOpenD = orgOpen;
 orgOpen = function(id){
-  _orgOpenC(id);
   var f=orgList().find(function(x){return x.id===id;}); if(!f) return;
-  if(orgKind(f.name,f.mime)!=='pdf') return;
-  var ov=document.querySelectorAll('.ogview'); ov=ov[ov.length-1]; if(!ov) return;
-  var stage=ov.querySelector('.ogstage'); if(stage) orgRenderPdf(stage, f);
+  if(orgKind(f.name,f.mime)==='pdf'){ orgOpenPdfDirect(f); return; }
+  _orgOpenD(id);
 };
 
 refreshRing();
