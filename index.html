@@ -3268,7 +3268,7 @@ renderOrg = function(){
     if(f && f.data){
       var kind=orgKind(f.name,f.mime);
       ed.insertAdjacentHTML('beforebegin',
-        '<button class="ministep" data-ogopen="'+esc(id)+'">&#128065; '+(kind==='image'?'View':(kind==='pdf'?'Open':'Preview'))+'</button>'+
+        '<button class="ministep" data-ogopen="'+esc(id)+'">&#128065; '+(kind==='image'?'View':'Open')+'</button>'+
         '<button class="ministep" data-ogshare2="'+esc(id)+'">&#8593; Open in…</button>');
     }
   });
@@ -3280,35 +3280,30 @@ app.addEventListener('click', function(e){
     var f=orgList().find(function(x){return x.id===b.dataset.ogshare2;}); if(f) orgShare(f); return; }
 }, true);
 
-/* ===== v2026-09-24-D · PDF opens straight to the phone's own reader (no CDN, no blank screen) ===== */
-APP_VERSION = 'v2026-09-24-D · reliable PDF open';
-/* The in-page PDF.js/iframe preview depended on a live connection to cdnjs and
-   sometimes rendered blank on a real installed PWA. Skip it entirely: for a PDF,
-   send it straight to the phone's native PDF reader (Files/Books/etc.) via the
-   share sheet, or a direct download link as a fallback — both use the OS's own
-   PDF handling, which always works, instead of trying to draw the PDF ourselves. */
-function orgOpenPdfDirect(f){
+/* ===== v2026-09-24-E · always opens straight into the viewer, no "share via" chooser ===== */
+APP_VERSION = 'v2026-09-24-E · always-open, no chooser';
+/* navigator.share() always pops the "which app?" chooser — that's the iOS
+   share sheet doing its job, not a bug, but it's not what Tara wants for the
+   everyday View/Open tap. Instead, hand the blob straight to the browser with
+   window.open()/an anchor tab, the same way tapping a download in Safari does —
+   iOS opens PDFs, images, Word, Excel and PPT files directly in its own Quick
+   Look preview with no picker. The "Open in…" button keeps using the share
+   sheet on purpose, for when she *does* want to hand it to another app. */
+function orgOpenDocDirect(f){
   var url=orgBlobUrl(f);
   if(!url){ toast("Couldn't open that file"); return; }
-  try{
-    var file=new File([dataToBlob(f.data)], f.name||'file.pdf', {type:'application/pdf'});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      navigator.share({files:[file], title:f.title||f.name}).catch(function(){});
-      return;
-    }
-  }catch(e){}
-  try{
-    var w=window.open(url, '_blank');
-    if(w) return;
-  }catch(e){}
-  var a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; a.download=f.name||'file.pdf';
+  var a=document.createElement('a');
+  a.href=url; a.target='_blank'; a.rel='noopener';
   document.body.appendChild(a); a.click(); setTimeout(function(){ a.remove(); }, 400);
 }
-var _orgOpenD = orgOpen;
+var _orgOpenE = orgOpen;
 orgOpen = function(id){
   var f=orgList().find(function(x){return x.id===id;}); if(!f) return;
-  if(orgKind(f.name,f.mime)==='pdf'){ orgOpenPdfDirect(f); return; }
-  _orgOpenD(id);
+  var kind=orgKind(f.name,f.mime);
+  if(kind==='pdf' || kind==='excel' || kind==='word' || kind==='ppt' || kind==='file'){
+    orgOpenDocDirect(f); return;
+  }
+  _orgOpenE(id);
 };
 
 refreshRing();
